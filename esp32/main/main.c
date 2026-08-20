@@ -1,3 +1,4 @@
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -28,6 +29,12 @@ static void upload_task(void *arg)
             }
             app_cam_release(fb);
         }
+
+        // At the sensor's max resolution the JPEG buffer is much bigger,
+        // so keep an eye on both heap regions for fragmentation/pressure.
+        ESP_LOGI(TAG, "heap free: internal=%u psram=%u",
+                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
         TickType_t elapsed = xTaskGetTickCount() - cycle_start;
         TickType_t interval_ticks = pdMS_TO_TICKS(UPLOAD_INTERVAL_MS);

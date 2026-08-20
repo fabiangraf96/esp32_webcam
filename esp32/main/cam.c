@@ -52,13 +52,13 @@ esp_err_t app_cam_init(void)
 
         .pixel_format = PIXFORMAT_JPEG,
         // Weather-cam use case: a still frame every few seconds, not a
-        // stream, so we can afford noticeably higher quality than a live
-        // stream would allow. SVGA/JPEG quality 10 (0=best, 63=worst)
-        // still keeps files well under 100 kB - comfortable for the
-        // ESP32's PSRAM frame buffers and well within the 5s upload
-        // budget over WiFi.
-        .frame_size = FRAMESIZE_SVGA,
-        .jpeg_quality = 10,
+        // stream, so we can afford the OV2640's maximum resolution and
+        // near-best JPEG quality (0=best, 63=worst). Frame buffers live
+        // in PSRAM (4 MB available), so the larger buffers/files here are
+        // not a concern for RAM; watch serial logs for capture failures
+        // or heap pressure if this ever gets pushed further.
+        .frame_size = FRAMESIZE_UXGA,
+        .jpeg_quality = 5,
         .fb_count = 2,
         .fb_location = CAMERA_FB_IN_PSRAM,
         // IMPORTANT: GRAB_LATEST can stall esp_camera_fb_get() forever on
