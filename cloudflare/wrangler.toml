@@ -1,0 +1,10 @@
+name = "esp-webcam-relay"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+[[r2_buckets]]
+binding = "WEBCAM_BUCKET"
+bucket_name = "esp-webcam"
+
+# UPLOAD_TOKEN is a secret, not a var - set it with:
+#   npx wrangler secret put UPLOAD_TOKEN
