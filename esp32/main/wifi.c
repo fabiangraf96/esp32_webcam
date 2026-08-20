@@ -9,7 +9,6 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
-#include "mdns.h"
 
 #include "secrets.h"
 
@@ -42,19 +41,6 @@ static void event_handler(void *arg, esp_event_base_t event_base,
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
-}
-
-static void mdns_start(void)
-{
-    esp_err_t err = mdns_init();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "mdns_init failed: 0x%x", err);
-        return;
-    }
-    mdns_hostname_set(MDNS_HOSTNAME);
-    mdns_instance_name_set("ESP32 Weather Webcam");
-    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
-    ESP_LOGI(TAG, "mDNS started as %s.local", MDNS_HOSTNAME);
 }
 
 esp_err_t wifi_connect(void)
@@ -90,7 +76,6 @@ esp_err_t wifi_connect(void)
                                             pdFALSE, pdFALSE, portMAX_DELAY);
 
     if (bits & WIFI_CONNECTED_BIT) {
-        mdns_start();
         return ESP_OK;
     }
 

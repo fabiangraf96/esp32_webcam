@@ -1,5 +1,6 @@
-// Cloudflare Worker: receives JPEG snapshots from the Raspberry Pi relay,
-// stores the latest one in R2, and serves a small weather-webcam page.
+// Cloudflare Worker: receives JPEG snapshots uploaded directly by the
+// ESP32-CAM, stores the latest one in R2, and serves a small
+// weather-webcam page.
 //
 // Routes:
 //   GET  /            - HTML page, auto-refreshing <img>

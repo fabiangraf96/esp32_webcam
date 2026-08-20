@@ -3,14 +3,14 @@ idf_component_register(
         "main.c"
         "cam.c"
         "wifi.c"
-        "webserver.c"
+        "uploader.c"
     INCLUDE_DIRS
         "."
     REQUIRES
         driver
         esp_timer
-        esp_http_server
+        esp_http_client
         nvs_flash
         esp_wifi
-        mdns
+        mbedtls
 )

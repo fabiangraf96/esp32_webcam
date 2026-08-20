@@ -1,7 +1,8 @@
 # Cloudflare Worker: webcam relay
 
-Receives JPEG snapshots from the Raspberry Pi, stores the latest one in an
-R2 bucket, and serves a small auto-refreshing webcam page. Fully decoupled
+Receives JPEG snapshots uploaded directly by the ESP32-CAM, stores the
+latest one in an R2 bucket, and serves a small auto-refreshing webcam
+page. Fully decoupled
 from the main `fabian_graf_website` Pages project - just link to this
 worker's URL from a button on the site (opens in a new tab).
 
@@ -18,7 +19,7 @@ npx wrangler login
 npx wrangler r2 bucket create esp-webcam
 
 # Set the shared upload secret (generate one, e.g. `openssl rand -hex 32`).
-# Must match UPLOAD_TOKEN in raspi/config.env.
+# Must match UPLOAD_TOKEN in esp32/main/secrets.h.
 npx wrangler secret put UPLOAD_TOKEN
 
 # Deploy.
@@ -33,7 +34,7 @@ https://esp-webcam-relay.<your-subdomain>.workers.dev
 
 - `GET  /`       -> HTML webcam page (this is what you link to from the site)
 - `GET  /image`  -> raw latest JPEG
-- `POST /upload` -> used by the Raspberry Pi relay script (needs the Bearer token)
+- `POST /upload` -> used by the ESP32-CAM firmware (needs the Bearer token)
 
 ## Updating
 

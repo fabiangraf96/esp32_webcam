@@ -1,0 +1,6 @@
+# Name,   Type, SubType, Offset,  Size, Flags
+# No OTA needed (reflashed over USB); give the single factory app most of
+# the 4 MB flash since mbedTLS/esp_http_client push the binary past 1 MB.
+nvs,      data, nvs,     0x9000,  0x6000,
+phy_init, data, phy,     0xf000,  0x1000,
+factory,  app,  factory, 0x10000, 0x3F0000,
