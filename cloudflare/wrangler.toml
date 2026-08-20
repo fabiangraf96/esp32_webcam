@@ -1,6 +1,7 @@
 name = "esp-webcam-relay"
 main = "worker.js"
 compatibility_date = "2024-11-01"
+account_id = "d8b73bc75b16d6aa3684d1eb78b848e8"
 
 [[r2_buckets]]
 binding = "WEBCAM_BUCKET"
