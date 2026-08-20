@@ -1,7 +1,9 @@
 name = "esp-webcam-relay"
 main = "worker.js"
 compatibility_date = "2024-11-01"
-account_id = "d8b73bc75b16d6aa3684d1eb78b848e8"
+# account_id intentionally NOT hardcoded here (keeps this file safe to make
+# public later) - set it via the CLOUDFLARE_ACCOUNT_ID env var instead, see
+# cloudflare/README.md.
 
 [[r2_buckets]]
 binding = "WEBCAM_BUCKET"

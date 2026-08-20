@@ -8,12 +8,23 @@ worker's URL from a button on the site (opens in a new tab).
 
 ## One-time setup
 
+`wrangler.toml` intentionally does not hardcode an `account_id` (keeps the
+file safe to make public later). Either:
+
+- `npx wrangler login` (opens a browser, ties the session to one account), or
+- export both `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (needed if
+  your API token doesn't have the `Account: Membership Read` permission,
+  which is what `wrangler` normally uses to auto-detect the account id).
+  Find your account id in the Cloudflare dashboard URL
+  (`dash.cloudflare.com/<account_id>/...`) or under Workers & Pages >
+  Overview > Account ID (right sidebar).
+
 ```bash
 cd cloudflare
 npm install                 # installs wrangler locally (optional, npx works too)
 
-# Log in (opens a browser) OR export CLOUDFLARE_API_TOKEN instead.
-npx wrangler login
+export CLOUDFLARE_API_TOKEN=...     # if not using `wrangler login`
+export CLOUDFLARE_ACCOUNT_ID=...    # if not using `wrangler login`
 
 # Create the R2 bucket referenced in wrangler.toml.
 npx wrangler r2 bucket create esp-webcam
