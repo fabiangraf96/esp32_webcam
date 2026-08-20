@@ -7,18 +7,12 @@ esp32/managed_components/
 
 # Secrets - never commit these
 esp32/main/secrets.h
-raspi/config.env
 cloudflare/.dev.vars
 cloudflare/.wrangler/
 cloudflare/wrangler.toml.local
 
 # Node / wrangler
 cloudflare/node_modules/
-
-# Python
-raspi/__pycache__/
-raspi/*.pyc
-raspi/.venv/
 
 # Misc
 *.log
