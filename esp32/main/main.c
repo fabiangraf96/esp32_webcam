@@ -10,7 +10,7 @@
 
 static const char *TAG = "main";
 
-#define UPLOAD_INTERVAL_MS 5000
+#define UPLOAD_INTERVAL_MS 60000
 
 static void upload_task(void *arg)
 {

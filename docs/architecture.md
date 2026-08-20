@@ -16,7 +16,7 @@
   repo.** This keeps the webcam feature fully decoupled from the private
   `fabian_graf_website` repo/build - integration there is a single link/
   button, nothing else changes. R2 is free up to 10 GB storage / 10M reads
-  per month, comfortably enough for one small JPEG overwritten every 5s.
+  per month, comfortably enough for one small JPEG overwritten every 60s.
 - **Shared-secret bearer token**, not full R2/S3 credentials, on the ESP32.
   If the device is ever compromised, the attacker can only overwrite the
   one webcam image, not touch the R2 bucket/account directly.
@@ -38,12 +38,14 @@
    from the camera, POST it as the body of `HTTPS POST <UPLOAD_URL>` (the
    Cloudflare Worker's `/upload` route) with `Authorization: Bearer
    <UPLOAD_TOKEN>` and `Content-Type: image/jpeg`, release the frame
-   buffer, sleep until 5s have elapsed since the cycle started.
+   buffer, sleep until 60s have elapsed since the cycle started.
 2. The Cloudflare Worker's `/upload` handler checks the bearer token and
    writes the JPEG into R2 as `latest.jpg`, overwriting the previous frame.
 3. The Worker's `/` handler serves a tiny HTML page with an `<img>` that
    points at `/image` (which streams `latest.jpg` straight from R2,
-   `Cache-Control: no-store`) and a `setInterval` that reloads it every 5s.
+   `Cache-Control: no-store`) and a `setInterval` that reloads it every 30s
+   (deliberately shorter than the 60s upload interval, so a fresh frame
+   shows up in the browser roughly halfway through the wait on average).
 
 ## Failure modes considered
 
@@ -53,7 +55,7 @@
 - **Cloudflare/network hiccup:** same as above, just a stale image for a
   cycle or two on the site.
 - **TLS handshake overhead:** each cycle currently opens a fresh
-  connection/handshake rather than reusing a keep-alive session; at a 5s
-  interval this has so far stayed well within budget, but if latency ever
-  becomes an issue, reusing the `esp_http_client` handle across cycles is
-  the first thing to try.
+  connection/handshake rather than reusing a keep-alive session; at a 60s
+  interval this is a non-issue (well under 1% duty cycle), but if it ever
+  becomes relevant at a much shorter interval, reusing the
+  `esp_http_client` handle across cycles is the first thing to try.

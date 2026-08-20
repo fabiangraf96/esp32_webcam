@@ -8,7 +8,7 @@
 //   POST /upload      - store a new JPEG (Authorization: Bearer <UPLOAD_TOKEN>)
 
 const OBJECT_KEY = "latest.jpg";
-const REFRESH_SECONDS = 5;
+const REFRESH_SECONDS = 30;
 
 const PAGE_HTML = `<!doctype html>
 <html lang="de">
@@ -49,7 +49,10 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/") {
       return new Response(PAGE_HTML, {
-        headers: { "content-type": "text/html; charset=utf-8" },
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+        },
       });
     }
 

@@ -1,13 +1,13 @@
 # esp_webcam
 
 Weather webcam: an AI-Thinker ESP32-CAM in the home WiFi that uploads a
-JPEG snapshot directly to a Cloudflare Worker every 5s over HTTPS, and
+JPEG snapshot directly to a Cloudflare Worker every 60s over HTTPS, and
 displayed on a small standalone page linked from
 https://fabian-graf-website.pages.dev/.
 
 ```
 ESP32-CAM (WiFi)
-        |  HTTPS POST /upload every 5s (Bearer token, TLS via crt bundle)
+        |  HTTPS POST /upload every 60s (Bearer token, TLS via crt bundle)
         v
 Cloudflare Worker + R2 (esp-webcam-relay)
         |  serves GET / (HTML) and GET /image (JPEG)

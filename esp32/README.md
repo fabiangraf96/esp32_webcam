@@ -4,7 +4,7 @@ ESP-IDF (v5.4.2) project. Connects to WiFi, initializes the OV2640 camera,
 then loops forever: grab a JPEG frame and `HTTPS POST` it directly to a
 Cloudflare Worker (`uploader.c`, using `esp_http_client` +
 `esp_crt_bundle_attach` for TLS cert validation), every `UPLOAD_INTERVAL_MS`
-(5000ms, see `main.c`).
+(60000ms, see `main.c`).
 
 No streaming, no MJPEG, and no local HTTP server/mDNS - the ESP32 only
 makes outbound connections, nothing polls or discovers it on the LAN,
@@ -50,7 +50,7 @@ I (xxx) esp-x509-crt-bundle: Certificate validated
 I (xxx) uploader: uploaded NNNN bytes
 ```
 
-every ~5s. If you instead see `upload request failed` or `upload
+every ~60s. If you instead see `upload request failed` or `upload
 rejected: HTTP 401/403`, double check `UPLOAD_URL`/`UPLOAD_TOKEN` in
 `secrets.h` against the Worker's deployed URL and `UPLOAD_TOKEN` secret.
 You can also check `<worker-url>/image` from a browser to confirm frames
@@ -61,10 +61,9 @@ are actually arriving.
 - Needs a USB-to-serial adapter (no onboard USB); connect GPIO0 to GND
   before power-up to enter flashing mode, remove it and reset to run
   normally.
-- 4 MB flash, 4 MB PSRAM (`sdkconfig.defaults` configures both). Uses a
+- 4 MB flash, 8 MB PSRAM (`sdkconfig.defaults` configures both). Uses a
   custom partition table (`partitions.csv`, single ~4 MB factory app, no
   OTA slot) since the mbedTLS/HTTPS stack pushes the binary past the
   default single-app table's 1 MB limit.
-- Frame size VGA (640x480), JPEG quality 12 - tune in `cam.c` if you want
-  higher resolution/quality (bigger files, more RAM/time per capture) or
-  smaller/faster.
+- Frame size UXGA (1600x1200, the sensor's max), JPEG quality 5 (near-best)
+  - tune in `cam.c` if you want smaller/faster instead.
