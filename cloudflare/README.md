@@ -1,10 +1,29 @@
 # Cloudflare Worker: webcam relay
 
-Receives JPEG snapshots uploaded directly by the ESP32-CAM, stores the
-latest one in an R2 bucket, and serves a small auto-refreshing webcam
-page. Fully decoupled
-from the main `fabian_graf_website` Pages project - just link to this
-worker's URL from a button on the site (opens in a new tab).
+Receives JPEG snapshots uploaded directly by two cameras - the ESP32-CAM
+("ammersricht") and a Raspberry Pi + camera module ("weiden") - stores the
+latest snapshot per camera in an R2 bucket, keeps an hourly rollup archive
+per camera, and serves small auto-refreshing webcam pages. Fully decoupled
+from the main `fabian_graf_website` Pages project - the site links to
+`/image`, `/weiden/image`, `/archive` and `/weiden/archive` and drives its
+own camera selector.
+
+## Two cameras
+
+| Camera      | Path prefix  | Upload token env var   | R2 keys                                  |
+|-------------|--------------|-------------------------|-------------------------------------------|
+| Ammersricht | (none, legacy) | `UPLOAD_TOKEN`         | `latest.jpg`, `archive/YYYY-MM-DD/HH.jpg` |
+| Weiden      | `/weiden`    | `UPLOAD_TOKEN_WEIDEN`   | `weiden/latest.jpg`, `weiden/archive/YYYY-MM-DD/HH.jpg` |
+
+Ammersricht keeps its original unprefixed routes/keys for backwards
+compatibility with the already-flashed ESP32 firmware and existing R2 data.
+Every route is also reachable prefixed with `/ammersricht` if you prefer to
+be explicit.
+
+Each camera's hourly archive slot for the current hour is filled by
+whichever `POST .../upload` is the first to arrive after that hour started
+(Europe/Berlin local time) - no Cron Trigger needed, since both cameras
+upload roughly every 60s on their own.
 
 ## One-time setup
 
@@ -29,9 +48,11 @@ export CLOUDFLARE_ACCOUNT_ID=...    # if not using `wrangler login`
 # Create the R2 bucket referenced in wrangler.toml.
 npx wrangler r2 bucket create esp-webcam
 
-# Set the shared upload secret (generate one, e.g. `openssl rand -hex 32`).
-# Must match UPLOAD_TOKEN in esp32/main/secrets.h.
+# Set the shared upload secrets (generate with e.g. `openssl rand -hex 32`).
+# UPLOAD_TOKEN must match esp32/main/secrets.h (Ammersricht/ESP32-CAM).
+# UPLOAD_TOKEN_WEIDEN must match config.env on the Raspberry Pi (Weiden).
 npx wrangler secret put UPLOAD_TOKEN
+npx wrangler secret put UPLOAD_TOKEN_WEIDEN
 
 # Deploy.
 npx wrangler deploy
@@ -43,9 +64,14 @@ npx wrangler deploy
 https://esp-webcam-relay.<your-subdomain>.workers.dev
 ```
 
-- `GET  /`       -> HTML webcam page (this is what you link to from the site)
-- `GET  /image`  -> raw latest JPEG
-- `POST /upload` -> used by the ESP32-CAM firmware (needs the Bearer token)
+- `GET  /`              -> HTML webcam page, Ammersricht (this is what the site links to)
+- `GET  /image`         -> raw latest JPEG, Ammersricht
+- `POST /upload`        -> used by the ESP32-CAM firmware (needs the Bearer token)
+- `GET  /archive[...]`  -> hourly archive, Ammersricht
+- `GET  /weiden`               -> HTML webcam page, Weiden
+- `GET  /weiden/image`         -> raw latest JPEG, Weiden
+- `POST /weiden/upload`        -> used by the Raspberry Pi script (needs its own Bearer token)
+- `GET  /weiden/archive[...]`  -> hourly archive, Weiden
 
 ## Updating
 

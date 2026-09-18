@@ -9,5 +9,12 @@ compatibility_date = "2024-11-01"
 binding = "WEBCAM_BUCKET"
 bucket_name = "esp-webcam"
 
-# UPLOAD_TOKEN is a secret, not a var - set it with:
-#   npx wrangler secret put UPLOAD_TOKEN
+# Hourly archive: the scheduled() handler copies each camera's latest.jpg
+# into archive/<date>/<hour>.jpg. Declared here (not just in the dashboard)
+# so that `wrangler deploy` does not remove the trigger.
+[triggers]
+crons = ["0 * * * *"]
+
+# Upload secrets (not vars) - set them with:
+#   npx wrangler secret put UPLOAD_TOKEN         # Ammersricht / ESP32-CAM
+#   npx wrangler secret put UPLOAD_TOKEN_WEIDEN  # Weiden / Raspberry Pi
