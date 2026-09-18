@@ -1,5 +1,22 @@
 # Architecture
 
+## Cameras
+
+Two cameras share one Worker and one R2 bucket (`weather-webcam`):
+
+| Camera        | Hardware                      | Routes            | R2 keys                                            |
+|---------------|-------------------------------|-------------------|----------------------------------------------------|
+| `ammersricht` | ESP32-CAM (this repo)         | `/ammersricht/*`  | `latest_ammersricht.jpg`, `archive_ammersricht/...` |
+| `weiden`      | Raspberry Pi + camera module  | `/weiden/*`       | `latest_weiden.jpg`, `archive_weiden/...`           |
+
+The Weiden uploader lives in a separate repo
+([raspi_webcam](https://github.com/fabiangraf96/raspi_webcam)); it only
+needs the Worker's `/weiden/upload` route and its own bearer token.
+
+Routes are symmetric - there are no unprefixed routes. Each camera has its
+own upload secret (`UPLOAD_TOKEN`, `UPLOAD_TOKEN_WEIDEN`) so that rotating
+one never affects the other.
+
 ## Why this shape
 
 - **No streaming.** The requirement is "a few fps, not a real stream", so a
@@ -36,16 +53,22 @@
 1. ESP32-CAM boots, joins WiFi (`esp32/main/secrets.h`), initializes the
    camera, then starts a FreeRTOS task that loops forever: grab one frame
    from the camera, POST it as the body of `HTTPS POST <UPLOAD_URL>` (the
-   Cloudflare Worker's `/upload` route) with `Authorization: Bearer
-   <UPLOAD_TOKEN>` and `Content-Type: image/jpeg`, release the frame
+   Cloudflare Worker's `/ammersricht/upload` route) with `Authorization:
+   Bearer <UPLOAD_TOKEN>` and `Content-Type: image/jpeg`, release the frame
    buffer, sleep until 60s have elapsed since the cycle started.
-2. The Cloudflare Worker's `/upload` handler checks the bearer token and
-   writes the JPEG into R2 as `latest.jpg`, overwriting the previous frame.
-3. The Worker's `/` handler serves a tiny HTML page with an `<img>` that
-   points at `/image` (which streams `latest.jpg` straight from R2,
-   `Cache-Control: no-store`) and a `setInterval` that reloads it every 30s
-   (deliberately shorter than the 60s upload interval, so a fresh frame
-   shows up in the browser roughly halfway through the wait on average).
+2. The Worker's `/<camera>/upload` handler checks that camera's bearer
+   token and writes the JPEG into R2 as `latest_<camera>.jpg`, overwriting
+   the previous frame.
+3. The Worker's `/<camera>` handler serves a tiny HTML page with an `<img>`
+   that points at `/<camera>/image` (which streams the latest JPEG straight
+   from R2, `Cache-Control: no-store`) and a `setInterval` that reloads it
+   every 30s (deliberately shorter than the 60s upload interval, so a fresh
+   frame shows up in the browser roughly halfway through the wait on
+   average). `/` redirects to the default camera.
+4. Once an hour a Cron Trigger copies each camera's current image to
+   `archive_<camera>/YYYY-MM-DD/HH.jpg` (Europe/Berlin). A camera that has
+   not uploaded within the last 10 minutes is skipped, so an outage leaves
+   a gap instead of a run of duplicated stale frames.
 
 ## Failure modes considered
 

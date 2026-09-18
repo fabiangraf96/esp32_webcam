@@ -2,28 +2,27 @@
 
 Receives JPEG snapshots uploaded directly by two cameras - the ESP32-CAM
 ("ammersricht") and a Raspberry Pi + camera module ("weiden") - stores the
-latest snapshot per camera in an R2 bucket, keeps an hourly rollup archive
-per camera, and serves small auto-refreshing webcam pages. Fully decoupled
-from the main `fabian_graf_website` Pages project - the site links to
-`/image`, `/weiden/image`, `/archive` and `/weiden/archive` and drives its
-own camera selector.
+latest snapshot per camera in the `weather-webcam` R2 bucket, keeps an
+hourly rollup archive per camera, and serves small auto-refreshing webcam
+pages. Fully decoupled from the main `fabian_graf_website` Pages project -
+the site just embeds `/<camera>/image` and links to `/<camera>/archive`.
 
 ## Two cameras
 
-| Camera      | Path prefix  | Upload token env var   | R2 keys                                  |
-|-------------|--------------|-------------------------|-------------------------------------------|
-| Ammersricht | (none, legacy) | `UPLOAD_TOKEN`         | `latest.jpg`, `archive/YYYY-MM-DD/HH.jpg` |
-| Weiden      | `/weiden`    | `UPLOAD_TOKEN_WEIDEN`   | `weiden/latest.jpg`, `weiden/archive/YYYY-MM-DD/HH.jpg` |
+| Camera      | Route prefix    | Upload token env var  | R2 keys                                                     |
+|-------------|-----------------|-----------------------|-------------------------------------------------------------|
+| Ammersricht | `/ammersricht`  | `UPLOAD_TOKEN`        | `latest_ammersricht.jpg`, `archive_ammersricht/YYYY-MM-DD/HH.jpg` |
+| Weiden      | `/weiden`       | `UPLOAD_TOKEN_WEIDEN` | `latest_weiden.jpg`, `archive_weiden/YYYY-MM-DD/HH.jpg`      |
 
-Ammersricht keeps its original unprefixed routes/keys for backwards
-compatibility with the already-flashed ESP32 firmware and existing R2 data.
-Every route is also reachable prefixed with `/ammersricht` if you prefer to
-be explicit.
+Routes are symmetric: every camera is addressed as `/<camera>/...`, and `/`
+redirects to the default camera. Each camera has its own upload secret, so
+rotating one never affects the other.
 
-Each camera's hourly archive slot for the current hour is filled by
-whichever `POST .../upload` is the first to arrive after that hour started
-(Europe/Berlin local time) - no Cron Trigger needed, since both cameras
-upload roughly every 60s on their own.
+The hourly archive is written by a Cron Trigger (`0 * * * *`, declared in
+`wrangler.toml`) that copies each camera's current image into
+`archive_<camera>/YYYY-MM-DD/HH.jpg` using Europe/Berlin local time. A
+camera whose image is older than 10 minutes when the cron fires is skipped,
+so an outage produces a gap rather than repeated stale frames.
 
 ## One-time setup
 
@@ -46,7 +45,7 @@ export CLOUDFLARE_API_TOKEN=...     # if not using `wrangler login`
 export CLOUDFLARE_ACCOUNT_ID=...    # if not using `wrangler login`
 
 # Create the R2 bucket referenced in wrangler.toml.
-npx wrangler r2 bucket create esp-webcam
+npx wrangler r2 bucket create weather-webcam
 
 # Set the shared upload secrets (generate with e.g. `openssl rand -hex 32`).
 # UPLOAD_TOKEN must match esp32/main/secrets.h (Ammersricht/ESP32-CAM).
@@ -64,14 +63,15 @@ npx wrangler deploy
 https://esp-webcam-relay.<your-subdomain>.workers.dev
 ```
 
-- `GET  /`              -> HTML webcam page, Ammersricht (this is what the site links to)
-- `GET  /image`         -> raw latest JPEG, Ammersricht
-- `POST /upload`        -> used by the ESP32-CAM firmware (needs the Bearer token)
-- `GET  /archive[...]`  -> hourly archive, Ammersricht
-- `GET  /weiden`               -> HTML webcam page, Weiden
-- `GET  /weiden/image`         -> raw latest JPEG, Weiden
-- `POST /weiden/upload`        -> used by the Raspberry Pi script (needs its own Bearer token)
-- `GET  /weiden/archive[...]`  -> hourly archive, Weiden
+- `GET  /`                          -> redirect to the default camera
+- `GET  /ammersricht`               -> HTML webcam page
+- `GET  /ammersricht/image`         -> raw latest JPEG
+- `POST /ammersricht/upload`        -> used by the ESP32-CAM firmware (Bearer `UPLOAD_TOKEN`)
+- `GET  /ammersricht/archive[...]`  -> hourly archive
+- `GET  /weiden`                    -> HTML webcam page
+- `GET  /weiden/image`              -> raw latest JPEG
+- `POST /weiden/upload`             -> used by the Raspberry Pi script (Bearer `UPLOAD_TOKEN_WEIDEN`)
+- `GET  /weiden/archive[...]`       -> hourly archive
 
 ## Updating
 
