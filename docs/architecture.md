@@ -50,12 +50,15 @@ one never affects the other.
 
 ## Data flow
 
-1. ESP32-CAM boots, joins WiFi (`esp32/main/secrets.h`), initializes the
-   camera, then starts a FreeRTOS task that loops forever: grab one frame
-   from the camera, POST it as the body of `HTTPS POST <UPLOAD_URL>` (the
-   Cloudflare Worker's `/ammersricht/upload` route) with `Authorization:
-   Bearer <UPLOAD_TOKEN>` and `Content-Type: image/jpeg`, release the frame
-   buffer, sleep until 60s have elapsed since the cycle started.
+1. The ESP32-CAM runs one capture per boot and then deep-sleeps; there is no
+   long-lived task. Each cycle: power the OV2640 up (release the PWDN latch
+   held through sleep), initialize the camera, join WiFi
+   (`esp32/main/secrets.h`), discard two warm-up frames, grab one frame,
+   copy it into PSRAM so the sensor can be powered down before transmitting,
+   POST it as the body of `HTTPS POST <UPLOAD_URL>` (the Cloudflare Worker's
+   `/ammersricht/upload` route) with `Authorization: Bearer <UPLOAD_TOKEN>`
+   and `Content-Type: image/jpeg`, then deep-sleep for the remainder of the
+   60s. See "Power management" below.
 2. The Worker's `/<camera>/upload` handler checks that camera's bearer
    token and writes the JPEG into R2 as `latest_<camera>.jpg`, overwriting
    the previous frame.
@@ -70,11 +73,61 @@ one never affects the other.
    not uploaded within the last 10 minutes is skipped, so an outage leaves
    a gap instead of a run of duplicated stale frames.
 
+## Power management
+
+The first version kept everything powered continuously: the upload task sat
+in `vTaskDelay`, the OV2640 free-ran, and WiFi power save was explicitly
+disabled. After ~3 days of uninterrupted operation the board developed an
+audible whine (coil whine from the on-board regulator under constant load)
+and ran hot. Since a frame is only needed once every 60s, a ~0.3% duty
+cycle, the firmware now idles cold instead:
+
+- **Deep sleep between cycles** (`main.c`). `app_main()` performs exactly
+  one capture+upload and calls `esp_deep_sleep_start()`; the timer wakeup
+  is set to `60s - <time already spent awake>`, so the cadence stays fixed
+  regardless of how long the cycle took. A wake is a full boot, which has
+  the side benefit that heap fragmentation can never accumulate.
+- **Sensor powered down during sleep** (`cam.c`). PWDN (GPIO32) is an RTC
+  pad, so it is driven high and `rtc_gpio_hold_en()` latches that level for
+  the duration of the sleep. Without the latch the pad floats as soon as
+  the digital core stops and the sensor would keep drawing its full active
+  current while the CPU is asleep. `app_cam_power_on()` must release the
+  latch on the next wake before the camera driver can claim the pin.
+- **Sensor powered down during the upload too** (`main.c`). The JPEG is
+  copied out of the driver's frame buffer into PSRAM so the camera can be
+  deinitialized before the TLS handshake, which is the cycle's largest
+  radio burst - there is no reason to have the camera's analog rail loaded
+  at the same time.
+- **WiFi modem sleep** (`wifi.c`). `WIFI_PS_MIN_MODEM` replaces
+  `WIFI_PS_NONE`. The old setting was justified in a comment by a
+  "poll-every-5s" interval that stopped being true when the interval moved
+  to 60s; nothing rechecked it at the time.
+- **Fast reconnect** (`wifi.c`). Channel and BSSID of the last successful
+  association are cached in RTC memory (which survives deep sleep) and fed
+  back into `wifi_config_t`, turning the next connect from a full
+  all-channel scan into a directed probe. Wake time is the only time the
+  board is expensive, so shortening it is what actually saves energy. If
+  the cached AP has moved the first disconnect invalidates the cache and
+  retries with a normal scan, without consuming the retry budget.
+- **No NVS writes per cycle** (`wifi.c`). `esp_wifi_set_storage(WIFI_STORAGE_RAM)`
+  keeps the WiFi config out of flash; at ~1440 cycles/day, letting the
+  driver rewrite it on every boot would be pointless flash wear.
+
+Two guards keep a bad cycle from becoming a hot loop: `wifi_connect()` has
+a 30s timeout (rather than blocking forever), and any failure path still
+falls through to `enter_deep_sleep()` instead of rebooting immediately, so
+a dead sensor or a missing AP costs one frame rather than spinning the
+board at full power.
+
 ## Failure modes considered
 
-- **ESP32 reboots/loses WiFi:** the upload loop's `esp_http_client_perform`
-  call fails, gets logged, retried next cycle; no crash (verified: 11+
-  consecutive successful upload cycles observed with no errors/reboots).
+- **ESP32 reboots/loses WiFi:** the upload's `esp_http_client_perform` call
+  fails, gets logged, and the board deep-sleeps and retries next cycle; no
+  crash. Because every cycle is a fresh boot, a reboot is indistinguishable
+  from normal operation - at worst one frame is missed.
+- **Camera fails to initialize:** `app_cam_init()` returning an error sleeps
+  the full interval rather than looping on the failure, giving the sensor a
+  properly cold restart each time.
 - **Cloudflare/network hiccup:** same as above, just a stale image for a
   cycle or two on the site.
 - **TLS handshake overhead:** each cycle currently opens a fresh

@@ -1,8 +1,17 @@
 #include "cam.h"
 
+#include "driver/rtc_io.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "cam";
+
+// Time for the OV2640's internal regulators and oscillator to come up after
+// PWDN is released. The datasheet asks for ~1ms before SCCB access; we are
+// deliberately generous because the sensor is cold-started every cycle and a
+// failed SCCB probe costs a whole 60s slot.
+#define CAM_POWER_ON_SETTLE_MS 100
 
 // AI-Thinker ESP32-CAM pin map (OV2640).
 #define CAM_PIN_PWDN 32
@@ -22,6 +31,36 @@ static const char *TAG = "cam";
 #define CAM_PIN_VSYNC 25
 #define CAM_PIN_HREF 23
 #define CAM_PIN_PCLK 22
+
+void app_cam_power_on(void)
+{
+    // GPIO32 is an RTC pad, so app_cam_power_off() can latch it high for the
+    // duration of deep sleep. Undo that latch first, otherwise the level is
+    // frozen and the camera driver's own gpio_set_level() would be ignored.
+    rtc_gpio_hold_dis(CAM_PIN_PWDN);
+
+    rtc_gpio_init(CAM_PIN_PWDN);
+    rtc_gpio_set_direction(CAM_PIN_PWDN, RTC_GPIO_MODE_OUTPUT_ONLY);
+    rtc_gpio_set_level(CAM_PIN_PWDN, 0); // active low: 0 = sensor powered
+
+    // Hand the pad back to the normal GPIO matrix so esp_camera_init() can
+    // drive it as a plain output.
+    rtc_gpio_deinit(CAM_PIN_PWDN);
+
+    vTaskDelay(pdMS_TO_TICKS(CAM_POWER_ON_SETTLE_MS));
+}
+
+void app_cam_power_off(void)
+{
+    rtc_gpio_init(CAM_PIN_PWDN);
+    rtc_gpio_set_direction(CAM_PIN_PWDN, RTC_GPIO_MODE_OUTPUT_ONLY);
+    rtc_gpio_set_level(CAM_PIN_PWDN, 1); // active low: 1 = sensor powered down
+
+    // Latch the pad. Without this the level is lost the moment the digital
+    // core powers down and the sensor would draw its full active current for
+    // the entire deep-sleep window.
+    rtc_gpio_hold_en(CAM_PIN_PWDN);
+}
 
 esp_err_t app_cam_init(void)
 {
@@ -84,9 +123,29 @@ esp_err_t app_cam_init(void)
     return ESP_OK;
 }
 
+void app_cam_deinit(void)
+{
+    esp_err_t err = esp_camera_deinit();
+    if (err != ESP_OK && err != ESP_ERR_CAMERA_NOT_DETECTED) {
+        ESP_LOGW(TAG, "esp_camera_deinit failed: %s", esp_err_to_name(err));
+    }
+}
+
 camera_fb_t *app_cam_grab(void)
 {
     return esp_camera_fb_get();
+}
+
+void app_cam_discard_frames(int count)
+{
+    for (int i = 0; i < count; i++) {
+        camera_fb_t *fb = esp_camera_fb_get();
+        if (fb == NULL) {
+            ESP_LOGW(TAG, "warm-up frame %d/%d failed", i + 1, count);
+            return;
+        }
+        esp_camera_fb_return(fb);
+    }
 }
 
 void app_cam_release(camera_fb_t *fb)
