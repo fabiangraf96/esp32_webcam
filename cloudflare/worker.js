@@ -110,18 +110,52 @@ function pageHtml(cam) {
 <body>
   <div class="switch">${switcherHtml(cam, "live")}</div>
   <h1>Live-Webcam ${label}</h1>
-  <img id="cam" src="/${cam}/image" alt="Webcam Bild ${label}">
+  <img id="cam" alt="Webcam Bild ${label}">
   <div id="ts"></div>
   <a class="archive-link" href="/${cam}/archive">Archiv (stundliche Bilder)</a>
   <script>
+    // The image is fetched (rather than set as <img src>) so we can read the
+    // Last-Modified header, i.e. when the camera actually uploaded the frame.
+    // That is what gets displayed - the browser's own clock says nothing
+    // about how fresh the picture is.
     const img = document.getElementById('cam');
     const ts = document.getElementById('ts');
-    function refresh() {
-      img.src = '/${cam}/image?t=' + Date.now();
-      ts.textContent = 'Letzte Aktualisierung: ' + new Date().toLocaleTimeString('de-DE');
+    let objectUrl = null;
+    let captured = null;
+
+    function ago(seconds) {
+      if (seconds < 90) return 'vor ' + seconds + ' s';
+      if (seconds < 5400) return 'vor ' + Math.round(seconds / 60) + ' min';
+      return 'vor ' + Math.round(seconds / 3600) + ' h';
     }
+
+    function render() {
+      if (!captured) { ts.textContent = ''; return; }
+      const age = Math.max(0, Math.round((Date.now() - captured.getTime()) / 1000));
+      ts.textContent = 'Aufgenommen: ' + captured.toLocaleTimeString('de-DE') +
+        ' (' + ago(age) + ')';
+    }
+
+    async function refresh() {
+      try {
+        const res = await fetch('/${cam}/image?t=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const stamp = res.headers.get('last-modified');
+        const next = URL.createObjectURL(await res.blob());
+        img.src = next;
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        objectUrl = next;
+        captured = stamp ? new Date(stamp) : null;
+        render();
+      } catch (err) {
+        ts.textContent = 'Bild nicht erreichbar (' + err.message + ')';
+      }
+    }
+
     refresh();
     setInterval(refresh, ${REFRESH_SECONDS * 1000});
+    // Keep the "vor X" label counting up between refreshes.
+    setInterval(render, 1000);
   </script>
 </body>
 </html>`;
@@ -212,6 +246,15 @@ async function handleImage(env, camConfig) {
     headers: {
       "content-type": "image/jpeg",
       "cache-control": "no-store",
+      // When the camera actually uploaded this frame. Clients show this
+      // instead of their own clock, so the age shown is the image's age
+      // and not just "when the page last polled".
+      "last-modified": object.uploaded.toUTCString(),
+      // Let the main website (a different origin) read the response and
+      // its Last-Modified header. Last-Modified is CORS-safelisted, the
+      // explicit expose-headers is for clarity.
+      "access-control-allow-origin": "*",
+      "access-control-expose-headers": "last-modified",
     },
   });
 }
